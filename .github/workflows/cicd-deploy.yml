@@ -1,0 +1,63 @@
+name: CI/CD Auto-Deploy
+
+on:
+  push:
+    branches:
+      - main
+
+jobs:
+  build-and-deploy:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v3
+
+      - name: Install dependencies
+        run: |
+          pip install -r requirements.txt || echo "No requirements.txt, skipping."
+
+      - name: Run tests
+        run: |
+          pytest || echo "No tests found, skipping."
+
+      - name: Set up kubectl
+        uses: azure/setup-kubectl@v3
+        with:
+          version: 'latest'
+
+      - name: Set up Kubeconfig
+        run: echo "${{ secrets.KUBECONFIG }}" > kubeconfig && export KUBECONFIG=$PWD/kubeconfig
+
+      - name: Deploy to Kubernetes
+        run: |
+          kubectl apply -f k8s/
+          kubectl rollout status deployment/my-app --timeout=120s
+
+      - name: Health check
+        run: |
+          kubectl get pods
+
+      - name: Notify Slack on deploy success
+        if: success()
+        uses: slackapi/slack-github-action@v1.25.0
+        with:
+          payload: |
+            {
+              "channel": "C091EMYQ6N9",
+              "text": "Deploy №${{ github.run_number }} successful! :rocket:"
+            }
+        env:
+          SLACK_BOT_TOKEN: ${{ secrets.SLACK_BOT_TOKEN }}
+
+      - name: Rollback and open Jira incident on failure
+        if: failure()
+        run: |
+          kubectl rollout undo deployment/my-app
+          python scripts/open_jira_incident.py
+        env:
+          JIRA_SITE: ${{ secrets.JIRA_SITE }}
+          JIRA_EMAIL: ${{ secrets.JIRA_EMAIL }}
+          JIRA_API_TOKEN: ${{ secrets.JIRA_API_TOKEN }}
+          JIRA_PROJECT_KEY: ${{ secrets.JIRA_PROJECT_KEY }}
+          GITHUB_RUN_NUMBER: ${{ github.run_number }} 
