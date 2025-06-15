@@ -26,4 +26,5 @@ response = requests.post(
     auth=HTTPBasicAuth(jira_email, jira_token),
     headers={"Content-Type": "application/json"}
 )
-print(response.status_code, response.text) 
+print(response.status_code, response.text)
+#test
